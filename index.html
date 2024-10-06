@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live preview/editor</title>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css"
+    />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        height: 100vh;
+        overflow: hidden;
+        background-color: #1e1e1e;
+        color: #ccc;
+      }
+
+      .main {
+        display: flex;
+        gap: 20px;
+        height: 100%;
+        max-height: 100%;
+      }
+
+      .code {
+        flex: 1;
+        height: calc(100%-40px);
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        padding: 20px;
+      }
+
+      .block {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .editor {
+        flex: 1;
+      }
+
+      .monaco-editor {
+        border: 1px solid #333;
+      }
+
+      #preview {
+        flex: 1;
+        background-color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="main">
+      <div class="code">
+        <div class="block" style="flex: 1">
+          <h2>HTML</h2>
+          <div class="editor" id="html-editor"></div>
+        </div>
+        <div class="block" style="flex: 1">
+          <h2>CSS</h2>
+          <div class="editor" id="css-editor"></div>
+        </div>
+      </div>
+      <iframe id="preview"></iframe>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.30.1/min/vs/loader.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+
+    <script>
+      const tabs = document.querySelectorAll('.tab');
+      const editors = document.querySelectorAll('.editor');
+      const previewIframe = document.getElementById('preview');
+
+      // Helper function to encode string in compressed Base64
+      const encodeCompressedBase64 = (str) => LZString.compressToBase64(str);
+
+      // Helper function to decode string from compressed Base64
+      const decodeCompressedBase64 = (str) =>
+        LZString.decompressFromBase64(str);
+
+      // Load Monaco Editor
+      require.config({
+        paths: {
+          vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.30.1/min/vs',
+        },
+      });
+
+      require(['vs/editor/editor.main'], function () {
+        const htmlEditor = monaco.editor.create(
+          document.getElementById('html-editor'),
+          {
+            value: decodeURIComponent(
+              getUrlParam('html') || '<h1>Hello World</h1>'
+            ),
+            language: 'html',
+            theme: 'vs-dark',
+            scrollBeyondLastLine: false,
+            automaticLayout: false,
+            minimap: { enabled: false },
+          }
+        );
+
+        const cssEditor = monaco.editor.create(
+          document.getElementById('css-editor'),
+          {
+            value: decodeURIComponent(
+              getUrlParam('css') || 'h1 { color: blue; }'
+            ),
+            language: 'css',
+            theme: 'vs-dark',
+            scrollBeyondLastLine: false,
+            automaticLayout: false,
+            minimap: { enabled: false },
+          }
+        );
+
+        // Helper function to get URL parameters
+        function getUrlParam(param) {
+          const urlParams = new URLSearchParams(window.location.search);
+          return decodeCompressedBase64(
+            urlParams.get(param) || encodeBase64('')
+          );
+        }
+
+        // Helper function to set URL parameters
+        function setUrlParam(param, value) {
+          const urlParams = new URLSearchParams(window.location.search);
+          urlParams.set(param, encodeCompressedBase64(value));
+          window.history.replaceState(null, null, `?${urlParams.toString()}`);
+        }
+
+        // Update iframe preview
+        const updatePreview = () => {
+          const html = htmlEditor.getValue();
+          const css = cssEditor.getValue();
+          const previewContent = `
+          <style>${css}</style>
+          ${html}
+        `;
+          previewIframe.srcdoc = previewContent;
+        };
+
+        // Update URL and preview when text changes
+        htmlEditor.onDidChangeModelContent(() => {
+          setUrlParam('html', htmlEditor.getValue());
+          updatePreview();
+        });
+
+        cssEditor.onDidChangeModelContent(() => {
+          setUrlParam('css', cssEditor.getValue());
+          updatePreview();
+        });
+
+        // Initial preview update
+        updatePreview();
+      });
+    </script>
+  </body>
+</html>
