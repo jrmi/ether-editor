@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Live preview/editor</title>
+    <title>Live preview/editor with Debounce</title>
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.5/codemirror.min.css"
@@ -74,8 +74,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 
     <script>
-      const tabs = document.querySelectorAll('.tab');
-      const editors = document.querySelectorAll('.editor');
       const previewIframe = document.getElementById('preview');
 
       // Helper function to encode string in compressed Base64
@@ -85,6 +83,21 @@
       const decodeCompressedBase64 = (str) =>
         LZString.decompressFromBase64(str);
 
+      // Helper function to get hash parameters
+      function getHashParam(param) {
+        const hash = window.location.hash.substr(1);
+        const params = new URLSearchParams(hash);
+        return decodeCompressedBase64(params.get(param) || '');
+      }
+
+      // Helper function to set hash parameters
+      function setHashParam(param, value) {
+        const hash = window.location.hash.substr(1);
+        const params = new URLSearchParams(hash);
+        params.set(param, encodeCompressedBase64(value));
+        window.location.hash = params.toString();
+      }
+
       // Load Monaco Editor
       require.config({
         paths: {
@@ -92,13 +105,20 @@
         },
       });
 
+      // Debounce function
+      function debounce(func, delay) {
+        let timer;
+        return function (...args) {
+          clearTimeout(timer);
+          timer = setTimeout(() => func.apply(this, args), delay);
+        };
+      }
+
       require(['vs/editor/editor.main'], function () {
         const htmlEditor = monaco.editor.create(
           document.getElementById('html-editor'),
           {
-            value: decodeURIComponent(
-              getUrlParam('html') || '<h1>Hello World</h1>'
-            ),
+            value: getHashParam('html') || '<h1>Hello World</h1>',
             language: 'html',
             theme: 'vs-dark',
             scrollBeyondLastLine: false,
@@ -110,9 +130,7 @@
         const cssEditor = monaco.editor.create(
           document.getElementById('css-editor'),
           {
-            value: decodeURIComponent(
-              getUrlParam('css') || 'h1 { color: blue; }'
-            ),
+            value: getHashParam('css') || 'h1 { color: blue; }',
             language: 'css',
             theme: 'vs-dark',
             scrollBeyondLastLine: false,
@@ -121,41 +139,39 @@
           }
         );
 
-        // Helper function to get URL parameters
-        function getUrlParam(param) {
-          const urlParams = new URLSearchParams(window.location.search);
-          return decodeCompressedBase64(
-            urlParams.get(param) || encodeBase64('')
-          );
-        }
-
-        // Helper function to set URL parameters
-        function setUrlParam(param, value) {
-          const urlParams = new URLSearchParams(window.location.search);
-          urlParams.set(param, encodeCompressedBase64(value));
-          window.history.replaceState(null, null, `?${urlParams.toString()}`);
-        }
-
         // Update iframe preview
         const updatePreview = () => {
           const html = htmlEditor.getValue();
           const css = cssEditor.getValue();
           const previewContent = `
-          <style>${css}</style>
-          ${html}
+          <!DOCTYPE html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Preview</title>
+              <style>${css}</style>
+            </head>
+            <body>
+              ${html}
+            </body>
+          </html>
         `;
           previewIframe.srcdoc = previewContent;
         };
 
-        // Update URL and preview when text changes
+        // Debounced version of updatePreview
+        const debouncedUpdatePreview = debounce(updatePreview, 300);
+
+        // Update hash and preview when text changes
         htmlEditor.onDidChangeModelContent(() => {
-          setUrlParam('html', htmlEditor.getValue());
-          updatePreview();
+          setHashParam('html', htmlEditor.getValue());
+          debouncedUpdatePreview();
         });
 
         cssEditor.onDidChangeModelContent(() => {
-          setUrlParam('css', cssEditor.getValue());
-          updatePreview();
+          setHashParam('css', cssEditor.getValue());
+          debouncedUpdatePreview();
         });
 
         // Initial preview update
