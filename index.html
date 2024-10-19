@@ -19,20 +19,25 @@
         color: #ccc;
       }
 
+      h2 {
+        margin-top: 10px;
+        margin-bottom: 5px;
+        font-size: 18px;
+      }
+
       .main {
         display: flex;
-        gap: 20px;
         height: 100%;
         max-height: 100%;
       }
 
       .code {
-        flex: 1;
+        flex: 40;
         height: calc(100%-40px);
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
-        padding: 20px;
+        padding: 10px;
       }
 
       .block {
@@ -49,13 +54,30 @@
         border: 1px solid #333;
       }
 
+      #preview-wrapper {
+        flex: 60;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+
       #preview {
         flex: 1;
         background-color: #fff;
       }
+
+      #hide-editors-link {
+        padding: 10px;
+        text-align: right;
+      }
+
+      .hide-editors .code,
+      .hide-editors #hide-editors-link {
+        display: none;
+      }
     </style>
   </head>
-  <body>
+  <body class="hide-editors">
     <div class="main">
       <div class="code">
         <div class="block" style="flex: 1">
@@ -67,15 +89,16 @@
           <div class="editor" id="css-editor"></div>
         </div>
       </div>
-      <iframe id="preview"></iframe>
+      <aside id="preview-wrapper">
+        <a id="hide-editors-link" href="#">Open Preview Only</a>
+        <iframe id="preview"></iframe>
+      </aside>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.30.1/min/vs/loader.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 
     <script>
-      const previewIframe = document.getElementById('preview');
-
       // Helper function to encode string in compressed Base64
       const encodeCompressedBase64 = (str) => LZString.compressToBase64(str);
 
@@ -87,7 +110,9 @@
       function getHashParam(param) {
         const hash = window.location.hash.substr(1);
         const params = new URLSearchParams(hash);
-        return decodeCompressedBase64(params.get(param) || '');
+        return params.get(param)
+          ? decodeCompressedBase64(params.get(param))
+          : '';
       }
 
       // Helper function to set hash parameters
@@ -98,13 +123,6 @@
         window.location.hash = params.toString();
       }
 
-      // Load Monaco Editor
-      require.config({
-        paths: {
-          vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.30.1/min/vs',
-        },
-      });
-
       // Debounce function
       function debounce(func, delay) {
         let timer;
@@ -114,36 +132,9 @@
         };
       }
 
-      require(['vs/editor/editor.main'], function () {
-        const htmlEditor = monaco.editor.create(
-          document.getElementById('html-editor'),
-          {
-            value: getHashParam('html') || '<h1>Hello World</h1>',
-            language: 'html',
-            theme: 'vs-dark',
-            scrollBeyondLastLine: false,
-            automaticLayout: false,
-            minimap: { enabled: false },
-          }
-        );
-
-        const cssEditor = monaco.editor.create(
-          document.getElementById('css-editor'),
-          {
-            value: getHashParam('css') || 'h1 { color: blue; }',
-            language: 'css',
-            theme: 'vs-dark',
-            scrollBeyondLastLine: false,
-            automaticLayout: false,
-            minimap: { enabled: false },
-          }
-        );
-
-        // Update iframe preview
-        const updatePreview = () => {
-          const html = htmlEditor.getValue();
-          const css = cssEditor.getValue();
-          const previewContent = `
+      // Function to generate preview content
+      function generatePreviewContent(html, css) {
+        return `
           <!DOCTYPE html>
           <html lang="en">
             <head>
@@ -157,26 +148,91 @@
             </body>
           </html>
         `;
-          previewIframe.srcdoc = previewContent;
-        };
+      }
 
-        // Debounced version of updatePreview
-        const debouncedUpdatePreview = debounce(updatePreview, 300);
+      const previewIframe = document.getElementById('preview');
 
-        // Update hash and preview when text changes
-        htmlEditor.onDidChangeModelContent(() => {
-          setHashParam('html', htmlEditor.getValue());
-          debouncedUpdatePreview();
+      const htmlValue = getHashParam('html') || '<h1>Hello World</h1>';
+      const cssValue = getHashParam('css') || 'h1 { color: blue; }';
+
+      // Check if URL has hideEditors parameter in the hash
+      const hashParams = new URLSearchParams(window.location.hash.substr(1));
+      if (hashParams.get('hideEditors') === 'true') {
+        previewIframe.srcdoc = generatePreviewContent(htmlValue, cssValue);
+      } else {
+        // Show editors
+        document.body.classList.remove('hide-editors');
+
+        const hideEditorsLink = document.getElementById('hide-editors-link');
+
+        // Load Monaco Editor
+        require.config({
+          paths: {
+            vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.30.1/min/vs',
+          },
         });
 
-        cssEditor.onDidChangeModelContent(() => {
-          setHashParam('css', cssEditor.getValue());
-          debouncedUpdatePreview();
-        });
+        require(['vs/editor/editor.main'], function () {
+          const htmlEditor = monaco.editor.create(
+            document.getElementById('html-editor'),
+            {
+              value: htmlValue,
+              language: 'html',
+              theme: 'vs-dark',
+              scrollBeyondLastLine: false,
+              automaticLayout: false,
+              minimap: { enabled: false },
+            }
+          );
 
-        // Initial preview update
-        updatePreview();
-      });
+          const cssEditor = monaco.editor.create(
+            document.getElementById('css-editor'),
+            {
+              value: cssValue,
+              language: 'css',
+              theme: 'vs-dark',
+              scrollBeyondLastLine: false,
+              automaticLayout: false,
+              minimap: { enabled: false },
+            }
+          );
+
+          // Update iframe preview
+          const updatePreview = () => {
+            const html = htmlEditor.getValue();
+            const css = cssEditor.getValue();
+            previewIframe.srcdoc = generatePreviewContent(html, css);
+          };
+
+          // Debounced version of updatePreview
+          const debouncedUpdatePreview = debounce(updatePreview, 300);
+
+          // Update hash and preview when text changes
+          htmlEditor.onDidChangeModelContent(() => {
+            setHashParam('html', htmlEditor.getValue());
+            debouncedUpdatePreview();
+          });
+
+          cssEditor.onDidChangeModelContent(() => {
+            setHashParam('css', cssEditor.getValue());
+            debouncedUpdatePreview();
+          });
+
+          // Initial preview update
+          updatePreview();
+
+          // Link to open preview only version
+          hideEditorsLink.addEventListener('click', (event) => {
+            event.preventDefault();
+            const hash = window.location.hash.substr(1);
+            const params = new URLSearchParams(hash);
+            params.set('hideEditors', 'true');
+            const newUrl =
+              window.location.href.split('#')[0] + '#' + params.toString();
+            window.open(newUrl, '_blank');
+          });
+        });
+      }
     </script>
   </body>
 </html>
